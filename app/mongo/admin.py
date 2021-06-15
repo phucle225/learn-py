@@ -1,34 +1,63 @@
 import datetime
-from mongoengine import *
+from app import db
+from bson.objectid import ObjectId
 from internals import errors
+from pydantic import BaseModel, Field
 
 COL_ADMIN = "admin"
+collcetion = db[COL_ADMIN]
 
-class Admin(Document):
-    username = StringField(unique=True, required=True)
-    password = StringField(required=True)
-    createTime = DateTimeField(default=datetime.datetime.utcnow())
-
-    # meta = {
-    #     'ordering': ['-published_date']
-    # }
-
-    def isValidate(self) -> bool:
-        if len(self.username) == 0 or len(self.password) == 0:
-            return False
-        return True
-
-    def Add(self) -> str:
-        try:
-            self.save()
-        except NotUniqueError:
-            return "username is exist"
-        return ""
+index_bool = False
 
 
-def Get(admin: Admin) -> str:
-    admin_users = Admin.objects(username=admin.username,password=admin.password)
-    # print(len(admin_users))
-    if not admin_users:
-        return "username or password is wrong"
-    return ""
+class Admin(BaseModel):
+    id: ObjectId = Field(ObjectId(), alias='_id')
+    username: str = ""
+    password: str = ""
+    createTime: datetime.datetime = datetime.datetime.utcnow()
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+def create_index():
+    # [("username", -1), ("createTime", -1)],unique=True
+    try:
+        collcetion.create_index([("createTime", -1)])
+        collcetion.create_index([("username", -1)], unique=True)
+        collcetion.create_indexes()
+    except Exception as err:
+        print("error create index: " + str(err))
+
+
+def Add(username: str, password: str) -> tuple[Exception, str]:
+    global index_bool
+    if not index_bool:
+        index_bool = True
+        create_index()
+    admin = Admin(username=username, password=password)
+    try:
+        id = collcetion.insert_one(admin.dict()).inserted_id
+    except Exception as err:
+        # print(str(e))
+        return err, ""
+    return None, str(id)
+
+
+def Login(username: str, password: str) -> tuple[Exception, Admin]:
+    admin = Admin()
+    try:
+        user = collcetion.find_one({"username": username, "password": password})
+    except Exception as err:
+        return err, admin
+    if user is None:
+        return errors.UserNotFound, admin
+    try:
+        admin = Admin.parse_obj(user)
+    except Exception as err:
+        return err, admin
+    return None, admin
+
+
+def Update(self):
+    pass

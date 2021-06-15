@@ -1,58 +1,50 @@
-import mongoengine.errors
-from flask_restful import Resource
-from flask_restful.reqparse import RequestParser
-from flask import request
-
+from app.admin import models
 from app.mongo import admin
+from internals import errors
 
 
-# def post():
-#     message = {
-#         'apiVersion': 'v1.0',
-#         'status': '200',
-#         'message': 'Welcome to the Flask API'
-#     }
-#     resp = jsonify(message)
-#     return resp
+class Service:
+    def Add(self, request: models.RequestAdd) -> models.ResponseAdd:
+        # check validate
+        response = models.ResponseAdd(Err={})
+        if not request.Validate():
+            # response.Err.code = 1
+            # response.Err.msg = "invalid request"
+            # response.Err.err = errors.ErrorRequestInvalid
+            response.Err = errors.Error(code=1,
+                                        msg="invalid request",
+                                        err="invalid request")
+            return response
 
-class Add(Resource):
-    def __init__(self):
-        self.parser = RequestParser()
+        err, _ = admin.Add(request.Username, request.Password)
+        if err is not None:
+            response.Err = errors.Error(code=2,
+                                        msg="server error",
+                                        err=str(err))
+            return response
 
-    def post(self):
-        data = request.get_json()
-        if not data:
-            return {"code": 1, "msg": "invalid request"}
-        # user = admin.Admin(username=data['Username'], password=data['Password'])
-        try:
-            user = admin.Admin(**data)
-        except mongoengine.errors.FieldDoesNotExist:
-            return {"code": 2, "msg": "invalid request"}
+        response.Data = "ok"
+        return response
 
-        if not user.isValidate():
-            return {"code": 3, "msg": "invalid request"}
-        err = user.Add()
-        if err != "":
-            return {"code": 4, "msg": err}
-        return {"code": 0, "msg": ""}
+    def Login(self, request: models.RequestLogin) -> models.ResponseLogin:
+        response = models.ResponseLogin(Err={})
+        if not request.Validate():
+            response.Err = errors.Error(code=1,
+                                        msg="invalid request",
+                                        err="invalid request")
+            return response
+        err, user = admin.Login(request.Username, request.Password)
+        if err is not None:
+            if err is errors.UserNotFound:
+                response.Err = errors.Error(code=2,
+                                            msg="user not found",
+                                            err=str(err))
+                return response
+            else:
+                response.Err = errors.Error(code=3,
+                                            msg="server error",
+                                            err=str(err))
+                return response
 
-
-class Login(Resource):
-    def __init__(self):
-        self.parser = RequestParser()
-
-    def post(self):
-        data = request.get_json()
-        # print(type(data))
-        if not data:
-            return {"code": 1, "msg": "invalid request"}
-        try:
-            user = admin.Admin(**data)
-        except mongoengine.errors.FieldDoesNotExist:
-            return {"code": 2, "msg": "invalid request"}
-        if not user.isValidate():
-            return {"code": 3, "msg": "invalid request"}
-        err = admin.Get(user)
-        if err != "":
-            return {"code": 4, "msg": err}
-        return {"code": 0, "msg": ""}
+        response.UID = user.id.__str__()
+        return response
